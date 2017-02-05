@@ -135,7 +135,19 @@ class CaptioningRNN(object):
     # defined above to store loss and gradients; grads[k] should give the      #
     # gradients for self.params[k].                                            #
     ############################################################################
-    pass
+    
+    out_proj, cache_proj = affine_forward(features, W_proj, b_proj)
+    out_word_vector, cache_word_vector = word_embedding_forward(captions_in, W_embed)
+    
+    out_rnn, cache_rnn = rnn_forward(out_word_vector, out_proj, Wx, Wh, b)
+    out_temporal_affine, cache_temporal_affine = temporal_affine_forward(out_rnn, W_vocab, b_vocab)
+    loss, dscores = temporal_softmax_loss(out_temporal_affine, captions_out, mask)
+    
+    dh, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dscores, cache_temporal_affine)
+    dx, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, cache_rnn)
+    grads['W_embed'] = word_embedding_backward(dx, cache_word_vector)
+    _, grads['W_proj'], grads['b_proj'] = affine_backward(dh0, cache_proj)
+    
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
@@ -197,7 +209,21 @@ class CaptioningRNN(object):
     # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
     # a loop.                                                                 #
     ###########################################################################
-    pass
+    
+    prev_h, _ = affine_forward(features, W_proj, b_proj)
+    
+    captions[:, 0] = self._start
+    curr_word = np.ones((N, 1), dtype=np.int32) * self._start
+    
+    for t in range(max_length):
+      word_embed, _ = word_embedding_forward(curr_word, W_embed)
+      h, _ = rnn_step_forward(np.squeeze(word_embed), prev_h, Wx, Wh, b)
+      scores, _ = temporal_affine_forward(h[:, np.newaxis, :], W_vocab, b_vocab)
+      idx_best = np.squeeze(np.argmax(scores, axis=2))
+      captions[:, t] = idx_best      
+      curr_word = captions[:, t]
+      prev_h = h
+    
     ############################################################################
     #                             END OF YOUR CODE                             #
     ############################################################################
